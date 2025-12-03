@@ -1,11 +1,7 @@
-import imaplib
-import email
+import imaplib, os, re, argparse
 from email.utils import parsedate_to_datetime
 from email.header import decode_header
 import pandas as pd
-import os
-import re
-import argparse
 
 IMAP_SERVER = "imap.gmail.com"
 EMAIL_USER = None

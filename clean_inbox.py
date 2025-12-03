@@ -6,14 +6,14 @@ Usage:
 python clean_inbox.py --user your-email@example.com --password app-password --days 30 --archive
 """
 from email.mime.text import MIMEText
-import imaplib, email, sys, argparse, datetime, smtplib
+import imaplib, argparse, datetime, smtplib
 
-# Gmail category folders
-FOLDERS = {
-    "Promotions": "[Gmail]/Promotions",
-    "Social": "[Gmail]/Social",
-    "Updates": "[Gmail]/Updates",
-    "Forums": "[Gmail]/Forums"
+# Gmail category filters
+CATEGORIES = {
+    "Promotions": "promotions",
+    "Social": "social"
+    #"Updates": "updates",
+    #"Forums": "forums"
 }
 
 IMAP_SERVER = None
@@ -22,21 +22,28 @@ APP_PASSWORD = None
 NOTIFY_EMAIL = None  # Set this to your notification email if needed
 SMTP_SERVER = "smtp.gmail.com"
 
-def delete_old_emails(folder, days):
+def delete_old_emails(cat, days):
     mail = imaplib.IMAP4_SSL(IMAP_SERVER)
     mail.login(EMAIL_ACCOUNT, APP_PASSWORD)
     try:
-        status, _ = mail.select(folder)
-        if status != "OK":
-            print(f"Could not access folder: {folder}")
-            return 0
+        mail.select("INBOX")
         date_cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).strftime("%d-%b-%Y")
-        result, data = mail.search(None, f'BEFORE {date_cutoff}')
-        if result != "OK":
-            print(f"Search failed in folder: {folder}")
+        
+        status, data_cat = mail.uid("search", None, f'X-GM-RAW "category:{cat}"') 
+        if status != "OK":
+            print(f"Search failed for category: {cat}")
             return 0
-        mail_ids = data[0].split()
+        
+        status, data_time = mail.uid("search", None, f'BEFORE {date_cutoff}') 
+        if status != "OK":
+            print(f"Search failed for Time: {date_cutoff}")
+            return 0
+        
+        mail_cat_ids = data_cat[0].split()
+        mail_time_ids = data_time[0].split()
+        mail_ids = list(set(mail_cat_ids) & set(mail_time_ids)) # intersection of both criteria
         deleted_count = len(mail_ids)
+        print(f"Found {deleted_count} emails to delete in category {cat}.")
         for mail_id in mail_ids:
             mail.store(mail_id, '+FLAGS', '\\Deleted')
         mail.expunge()
@@ -44,7 +51,7 @@ def delete_old_emails(folder, days):
         mail.logout()
         return deleted_count
     except Exception as e:
-        print(f"Error in folder {folder}: {e}")
+        print(f"Error in category {cat}: {e}")
         return 0
 
 def send_notification(results_dict):
@@ -77,9 +84,9 @@ def main():
     IMAP_SERVER = args.imap
     NOTIFY_EMAIL = args.notify_email
     results = {}
-    for name, folder in FOLDERS.items():
-        print(f"Cleaning tab: {name}")
-        deleted = delete_old_emails(folder, args.days)
+    for name, cat in CATEGORIES.items():
+        print(f"Cleaning category: {name}")
+        deleted = delete_old_emails(cat, args.days)
         results[name] = deleted
     if NOTIFY_EMAIL:
         print("Sending summary email...")

@@ -43,10 +43,17 @@ def delete_old_emails(cat, days):
         mail_time_ids = data_time[0].split()
         mail_ids = list(set(mail_cat_ids) & set(mail_time_ids)) # intersection of both criteria
         deleted_count = len(mail_ids)
+        # Convert mail IDs from bytes to strings
+        mail_ids = [uid.decode() if isinstance(uid, bytes) else uid for uid in mail_ids]
         print(f"Found {deleted_count} emails to delete in category {cat}.")
-        for mail_id in mail_ids:
-            mail.store(mail_id, '+FLAGS', '\\Deleted')
-        mail.expunge()
+        if mail_ids:
+            # Delete in batches of 1000
+            batch_size = 1000
+            for i in range(0, len(mail_ids), batch_size):
+                batch = mail_ids[i:i + batch_size]
+                print(f"Deleting batch {i // batch_size + 1} ({len(batch)} emails)...")
+                mail.uid('STORE', ','.join(batch), '+FLAGS', '\\Deleted')
+            mail.expunge()
         mail.close()
         mail.logout()
         return deleted_count
